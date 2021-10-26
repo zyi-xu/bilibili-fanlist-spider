@@ -1,0 +1,4 @@
+此程序用于获取
+1.bilibili某up主的关注列表
+2.bilibili某up主两条之内的关注列表
+3.bilibili某视频评论区用户的关注列表
