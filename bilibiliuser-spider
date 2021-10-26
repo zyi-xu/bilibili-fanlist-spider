@@ -1,0 +1,341 @@
+import requests
+from bs4 import BeautifulSoup
+import re
+import json
+import time
+import random
+import os
+import selenium
+from selenium import webdriver
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.by import By
+
+def getuserspace(usernameinput):
+    user_search_url=('https://search.bilibili.com/upuser?keyword='+usernameinput)
+    headers = {'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.102 Safari/537.36'}
+    result=requests.get(user_search_url,headers=headers)
+    result.encoding='utf-8'
+    htmlcontent=result.text
+    res=BeautifulSoup(htmlcontent,"lxml")
+    headline=res.find_all(class_='headline')
+    if headline==[]:
+        return 0
+    userspace_url='https:'+headline[0].a.attrs['href']
+    userspace_url=re.sub(r'\?from=search','',userspace_url)
+    return userspace_url
+
+
+def getuserfollowlist(useruid):
+    i=1
+    following_id=''
+    getfollowingapi=f'https://api.bilibili.com/x/relation/followings?vmid={useruid}&pn={i}&ps=20&order=desc'
+    headers = {'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.102 Safari/537.36'}
+    #print(getfollowingapi)
+    while i<=5:
+        connection=0
+        while connection==0:
+            try:
+                following_id+=requests.get(getfollowingapi,headers=headers).text
+                connection=1
+            except:
+                print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+                ran=random.uniform(4,7)
+                time.sleep(ran)
+                connection=0
+        i+=1
+        getfollowingapi = f'https://api.bilibili.com/x/relation/followings?vmid={useruid}&pn={i}&ps=20&order=desc'
+        ran=random.uniform(0.1,0.3)
+        time.sleep(ran)
+    following_list=re.findall(r"\"uname\":\"(.+?)\"",following_id)
+    return following_list
+
+def upfollowerget(upid):
+    i = 1
+    follower = []
+    getfollowerapi = f'https://api.bilibili.com/x/relation/followers?vmid={upid}&pn={i}&ps=20&order=desc'
+    headers = {'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.102 Safari/537.36'}
+    while i <= 5:
+        follwer_id_json = requests.get(getfollowerapi,headers=headers).text
+        follower_id_dic = json.loads(follwer_id_json)
+        follower += follower_id_dic.get('data').get('list')
+        i += 1
+        getfollowerapi = f'https://api.bilibili.com/x/relation/followers?vmid={upid}&pn={i}&ps=20&order=desc'
+        time.sleep(1)
+        follower_uid_list = []
+        follower_name_list = []
+    for every in follower:
+        follower_name_list.append(every.get('uname'))
+        follower_uid_list.append(every.get('mid'))
+        upmessage=[follower_name_list,follower_uid_list]
+    return upmessage
+
+def upcheck(followernamelist,followeruidlist,file,upname):
+    follower_uid_list=followeruidlist
+    follower_name_list=followernamelist
+    all=len(follower_name_list)
+    j=0
+    for uid in follower_uid_list:
+        print('\n当前查询第',j+1,'位用户：',follower_name_list[j])
+        followlist=getuserfollowlist(uid)
+        print(followlist)
+        writein = ''
+        for onename in followlist:
+            if(onename!=upname):
+                writein=writein+onename+' '
+        writein=writein+'\n'
+        file.write(writein)
+        j+=1
+    file.close()
+
+
+def videocheck(vieweruidlist,file):
+    all = len(vieweruidlist)
+    if all == 0:
+        print("该视频无用户评论")
+        return 0
+    else:
+        print('共爬取用户', all, '人')
+        i = 0
+        for uid in vieweruidlist:
+            i += 1
+            print('正在爬取第',i,"位用户,uid=",uid)
+            followlist = getuserfollowlist(uid)
+            writein=''
+            for onename in followlist:
+                writein = writein + onename + ' '
+            writein = writein + '\n'
+            file.write(writein)
+            print(followlist)
+    file.close()
+    return 0
+
+
+def videomemberlistget(webmesg):
+    ran = random.uniform(12, 15)
+    time.sleep(ran)
+    webmesg.execute_script(f"window.scrollTo(0,document.body.scrollHeight)")
+    ran = random.uniform(12, 15)
+    time.sleep(ran)
+    webmesg.execute_script(f"window.scrollTo(0,document.body.scrollHeight)")
+    ran = random.uniform(3, 5)
+    time.sleep(ran)
+    webmesg.execute_script(f"window.scrollTo(0,document.body.scrollHeight)")
+    ran = random.uniform(3, 5)
+    time.sleep(ran)
+    webmesg.execute_script(f"window.scrollTo(0,document.body.scrollHeight)")
+    ran = random.uniform(3, 5)
+    time.sleep(ran)
+    webmesg.execute_script(f"window.scrollTo(0,document.body.scrollHeight)")
+    all_web_mseeage=webmesg.page_source
+    webmesg.quit()
+    allm=BeautifulSoup(all_web_mseeage,"lxml")
+    userlist=allm.find_all(class_='user')
+    vieweruid1=[]
+    vieweruid2=[]
+    for usermessage in userlist:
+        mesg_str=str(usermessage)
+        vieweruid1.append(re.findall(r"data-usercard-mid=\"(.+?)\"",mesg_str))
+        for checknumber in vieweruid1:
+            if len(checknumber)==1:
+                for checknumber_str in checknumber:
+                    vieweruid2.append(checknumber_str)
+    vieweruid2=set(vieweruid2)
+    return vieweruid2
+
+def getuid(userspace):
+    useruid=re.sub(r'https://space.bilibili.com/','',userspace)
+    return useruid
+
+def normal_usercheck():
+    print('输入用户名：')
+    username= input()
+    userspace=getuserspace(username)
+    if userspace==0:
+        print('查无此人或此人已被封禁')
+        print('按任意键返回')
+        ret = input()
+        os.system('cls')
+        return ret
+    useruid=getuid(userspace)
+    userfollowlist=getuserfollowlist(useruid)
+    print(userfollowlist)
+    print ('按任意键返回')
+    ret=input()
+    os.system('cls')
+    return ret
+
+def up_usercheck():
+    print('输入up主名：')
+    upname= input()
+    upspace=getuserspace(upname)
+    if upspace==0:
+        print('查无此人或此人已被封禁')
+        print('按任意键返回')
+        ret = input()
+        os.system('cls')
+        return ret
+    upid=getuid(upspace)
+    print(upid)
+    upmessage=upfollowerget(upid)
+    file=fileget()
+    upcheck(upmessage[0],upmessage[1],file,upname)
+    print('按任意键返回')
+    ret=input()
+    os.system('cls')
+    return ret
+
+def fileget():
+    filenamegot = 0
+    while (filenamegot == 0):
+        print('请输入用于保存的文件夹名称（不需要输入.txt）')
+        filename = input()
+        filename = filename + '.txt'
+        try:
+            userfollowfile = open(filename, 'a+', errors='ignore')
+            filenamegot = 1
+            return userfollowfile
+        except:
+            print('文件访问失败！请重新输入')
+
+def graphbuild(upinputlist):
+    upidlist=[]
+    uplist=upinputlist
+    userfollowfile=fileget()
+    for upname in uplist:
+        time.sleep(2)
+        upspace=getuserspace(upname)
+        if upspace==0:
+            print('名单中有未能查询到的up主\n按任意键返回')
+            ret = input()
+            os.system('cls')
+            return ret
+        upid=getuid(upspace)
+        ran=random.uniform(1,3)
+        time.sleep(ran)
+        upidlist.append(upid)
+    print('upidlist获取完毕\n',upidlist)
+    namenum=0
+    for upuid in upidlist:
+        followerlist=upfollowerget(upuid)
+        followeruid=followerlist[1]
+        for onefolloweruid in followeruid:
+            onefollower_followlist=getuserfollowlist(onefolloweruid)
+            writeinstr=''
+            for onefollow in onefollower_followlist:
+                #if (onefollow!=uplist[namenum]):
+                writeinstr+=(onefollow+' ')
+                writeinstr.encode(encoding='UTF-8')
+            writeinstr_last=str(writeinstr)
+            writeinstr_last+='\n'
+            print('关注列表：',writeinstr_last)
+            if(writeinstr_last!=''):
+                userfollowfile.write(writeinstr_last)
+        namenum+=1
+    userfollowfile.close()
+    print('按任意键返回')
+    ret = input()
+    os.system('cls')
+    return ret
+
+
+def linshigongneng():
+    print('请输入要查询的文件名称（不需要输入.txt）')
+    filename=input()
+    filename=filename+'.txt'
+    try:
+        filesource=open(filename,'r+',errors='ignore',encoding='utf-8')
+    except:
+        print('文件查询失败，按任意键返回上一单元')
+        ret=input()
+        return ret
+    usermassage=filesource.readlines()
+    all_list=[]
+    all_dic={}
+    for everonemessage in usermassage:
+        everonemessage=everonemessage.strip('\n')
+        everyonelist=re.findall(r"(.+?) ",everonemessage)
+        all_list.append(everyonelist)
+    for everyonelist in all_list:
+        for everyfollow in everyonelist:
+            if everyfollow in all_dic:
+                all_dic[everyfollow]+=1
+            else :
+                all_dic[everyfollow]=1
+    sortedlist=sorted(all_dic.items(),key=lambda x:x[1],reverse=True)
+    for key,value in sortedlist:
+        if value>=20:
+            print(key,':',value)
+    filesource.close()
+    print('按任意键返回')
+    ret = input()
+    return ret
+
+
+
+def video_usercheck():
+    option = webdriver.ChromeOptions()
+    option.add_argument('disable-infobars')
+    lootpath=os.getcwd()
+    path=lootpath+'/chromedriver.exe'
+    drive = webdriver.Chrome(path, chrome_options=option)
+    file=fileget()
+    print('请输入要查询视频的bv号(不需要输入开头的BV)')
+    bvnum = input()
+    v_url=f"https://www.bilibili.com/video/BV{bvnum}"
+    drive.get(v_url)
+    headers = {'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.102 Safari/537.36'}
+    checkerror=requests.get(v_url,headers=headers)
+    checkerror.encoding='utf-8'
+    errormes=checkerror.text
+    error=BeautifulSoup(errormes,"lxml")
+    errorgot=''
+    errorgot=error.find(class_='error-container')
+    if errorgot!=None:
+        print('bv号输入错误')
+        print('按任意键返回')
+        ret = input()
+        os.system('cls')
+        return ret
+        return 0
+    else:
+        commentmemberlist=videomemberlistget(drive)
+        randomm=random.uniform(2,5)
+        time.sleep(randomm)
+        res=videocheck(commentmemberlist,file)
+        print('按任意键返回')
+        ret=input()
+        os.system('cls')
+        return ret
+
+i=0
+while i==0:
+    print('选择查询方式\n1.查询单个用户关注列表\n2.查询单个up主的粉丝们的关注列表\n3.批量爬取up主粉丝关注列表\n4.查询所爬取的关注列表频繁项\n5.查询某视频评论区的评论用户的关注列表')
+    u=''
+    up=''
+    video=''
+    getnum=input()
+    os.system('cls')
+    if getnum=='1':
+        u=normal_usercheck()
+    if getnum=='2':
+        up = up_usercheck()
+    if getnum=='3':
+        print('输入up主名称，每次输入后回车，输入#并回车完成输入')
+        end=''
+        resentlist = []
+        while(end!='#'):
+            end=input()
+            resentlist.append(end)
+        resentlist.pop()
+        graph = graphbuild(resentlist)
+        resentlist=[]
+        os.system('cls')
+    if getnum=='4':
+        uplist = linshigongneng()
+        os.system('cls')
+    if getnum=='5':
+        vi=video_usercheck()
+        os.system('cls')
+    else:
+        i=0
+        os.system('cls')
